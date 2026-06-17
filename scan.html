@@ -215,7 +215,7 @@ async function startCamera(empId){
 
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} },
+      video:{ facingMode:{ideal:'environment'}, width:{ideal:960}, height:{ideal:540} },
       audio: false
     });
     video.srcObject = cameraStream;
@@ -225,6 +225,9 @@ async function startCamera(empId){
     const dbg = document.getElementById('debug-readout');
     if(dbg) dbg.textContent = '📷 Kamera başlatıldı, bekleniyor...';
 
+    // Performans için görüntüyü küçültüp tarıyoruz (tam çözünürlük gerekmez, QR okuma için yeterli)
+    const SCAN_WIDTH = 480;
+
     scanLoop = setInterval(()=>{
       try{
         if(scanDone) return;
@@ -232,23 +235,26 @@ async function startCamera(empId){
           if(dbg) dbg.textContent = '⏳ Video hazırlanıyor...';
           return;
         }
-        canvas.width  = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const scale = SCAN_WIDTH / video.videoWidth;
+        const sw = SCAN_WIDTH;
+        const sh = Math.round(video.videoHeight * scale);
+        canvas.width  = sw;
+        canvas.height = sh;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(video,0,0,canvas.width,canvas.height);
-        const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+        ctx.drawImage(video,0,0,sw,sh);
+        const imgData = ctx.getImageData(0,0,sw,sh);
         const code = jsQR(imgData.data, imgData.width, imgData.height, {inversionAttempts:'attemptBoth'});
         if(code && code.data){
           if(dbg) dbg.textContent = '✅ Okundu: ' + code.data;
           processQRData(code.data, empId);
         } else if(dbg){
-          dbg.textContent = '🔍 Taranıyor... (' + canvas.width + 'x' + canvas.height + ')';
+          dbg.textContent = '🔍 Taranıyor... (' + sw + 'x' + sh + ')';
         }
       } catch(loopErr){
         const dbg2 = document.getElementById('debug-readout');
         if(dbg2) dbg2.textContent = '⚠️ Hata: ' + loopErr.message;
       }
-    }, 200);
+    }, 350);
 
   } catch(err) {
     camCard.style.display='none';
