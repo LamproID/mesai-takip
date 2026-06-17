@@ -4,13 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>MesaiTakip - QR Okut</title>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script>
-  // Eğer ana CDN başarısız olursa yedek CDN'i devreye sok
-  if (typeof jsQR === 'undefined') {
-    document.write('<script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"><\/script>');
-  }
-</script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -80,18 +74,16 @@
 
   <div class="card" id="camera-card" style="display:none">
     <div id="camera-container">
-      <video id="camera-video" autoplay playsinline></video>
-      <canvas id="camera-canvas"></canvas>
+      <div id="qr-reader" style="width:100%"></div>
       <div class="scan-corner sc-tl"></div>
       <div class="scan-corner sc-tr"></div>
       <div class="scan-corner sc-bl"></div>
       <div class="scan-corner sc-br"></div>
-      <div class="scan-line"></div>
       <div id="cam-emp-label"><span></span></div>
     </div>
     <div class="text-center mt8 text-muted" style="font-size:13px">📱 PC ekranındaki QR kodu çerçeveye getirin</div>
     <div id="debug-readout" class="text-center" style="font-size:12px;color:#4f46e5;font-family:monospace;margin-top:6px;min-height:18px"></div>
-    <button class="btn btn-red mt16" onclick="stopCamera()">⏹️ İptal</button>
+    <button class="btn btn-red mt16" onclick="stopCamera(true)">⏹️ İptal</button>
   </div>
 
   <div class="card" id="manual-card" style="display:none">
@@ -185,15 +177,16 @@ document.getElementById('emp-select').addEventListener('change', function(){
 });
 
 // ══════════════════════════════════════════════════
-// KAMERA
+// KAMERA (html5-qrcode kütüphanesi ile)
 // ══════════════════════════════════════════════════
-let cameraStream = null;
-let scanLoop     = null;
+let html5QrCode = null;
 let scanDone     = false;
+let currentEmpId = null;
 
 async function startCamera(empId){
-  stopCamera(false);
+  await stopCamera(false);
   scanDone = false;
+  currentEmpId = empId;
   document.getElementById('emp-select-card').style.display='none';
 
   const camCard = document.getElementById('camera-card');
@@ -202,10 +195,9 @@ async function startCamera(empId){
   const emp = EMPLOYEES.find(e=>e.id===empId);
   document.querySelector('#cam-emp-label span').textContent = emp ? `👤 ${emp.name} ${emp.surname}` : '';
 
-  const video  = document.getElementById('camera-video');
-  const canvas = document.getElementById('camera-canvas');
+  const dbg = document.getElementById('debug-readout');
 
-  if (typeof jsQR === 'undefined') {
+  if (typeof Html5Qrcode === 'undefined') {
     camCard.style.display='none';
     document.getElementById('manual-card').style.display='block';
     document.getElementById('emp-select-card').style.display='block';
@@ -214,61 +206,44 @@ async function startCamera(empId){
   }
 
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:{ideal:'environment'}, width:{ideal:960}, height:{ideal:540} },
-      audio: false
-    });
-    video.srcObject = cameraStream;
-    video.setAttribute('playsinline', true);
-    await video.play();
+    html5QrCode = new Html5Qrcode("qr-reader");
+    if(dbg) dbg.textContent = '📷 Kamera başlatılıyor...';
 
-    const dbg = document.getElementById('debug-readout');
-    if(dbg) dbg.textContent = '📷 Kamera başlatıldı, bekleniyor...';
-
-    // Performans için görüntüyü küçültüp tarıyoruz (tam çözünürlük gerekmez, QR okuma için yeterli)
-    const SCAN_WIDTH = 480;
-
-    scanLoop = setInterval(()=>{
-      try{
-        if(scanDone) return;
-        if(!video.videoWidth || !video.videoHeight){
-          if(dbg) dbg.textContent = '⏳ Video hazırlanıyor...';
-          return;
-        }
-        const scale = SCAN_WIDTH / video.videoWidth;
-        const sw = SCAN_WIDTH;
-        const sh = Math.round(video.videoHeight * scale);
-        canvas.width  = sw;
-        canvas.height = sh;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(video,0,0,sw,sh);
-        const imgData = ctx.getImageData(0,0,sw,sh);
-        const code = jsQR(imgData.data, imgData.width, imgData.height, {inversionAttempts:'attemptBoth'});
-        if(code && code.data){
-          if(dbg) dbg.textContent = '✅ Okundu: ' + code.data;
-          processQRData(code.data, empId);
-        } else if(dbg){
-          dbg.textContent = '🔍 Taranıyor... (' + sw + 'x' + sh + ')';
-        }
-      } catch(loopErr){
-        const dbg2 = document.getElementById('debug-readout');
-        if(dbg2) dbg2.textContent = '⚠️ Hata: ' + loopErr.message;
+    await html5QrCode.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
+          return { width: size, height: size };
+        },
+        aspectRatio: 1.0
+      },
+      (decodedText) => {
+        if(!scanDone) processQRData(decodedText, currentEmpId);
+      },
+      (errorMessage) => {
+        if(dbg && !scanDone) dbg.textContent = '🔍 Taranıyor...';
       }
-    }, 350);
-
+    );
+    if(dbg) dbg.textContent = '🔍 Taranıyor...';
   } catch(err) {
     camCard.style.display='none';
     document.getElementById('manual-card').style.display='block';
     document.getElementById('emp-select-card').style.display='block';
-    alert('Kamera açılamadı: ' + err.message + '\nManuel girişi kullanabilirsiniz.');
+    alert('Kamera açılamadı: ' + err + '\nManuel girişi kullanabilirsiniz.');
   }
 }
 
-function stopCamera(resetSelect=true){
-  if(scanLoop){ clearInterval(scanLoop); scanLoop=null; }
-  if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
-  const v=document.getElementById('camera-video');
-  if(v) v.srcObject=null;
+async function stopCamera(resetSelect=true){
+  if(html5QrCode){
+    try{
+      const state = html5QrCode.getState ? html5QrCode.getState() : null;
+      await html5QrCode.stop();
+      await html5QrCode.clear();
+    }catch(e){ /* zaten durmuş olabilir */ }
+    html5QrCode = null;
+  }
   document.getElementById('camera-card').style.display='none';
   document.getElementById('emp-select-card').style.display='block';
   if(resetSelect) document.getElementById('emp-select').value='';
@@ -277,7 +252,7 @@ function stopCamera(resetSelect=true){
 
 async function processQRData(data, empId){
   scanDone = true;
-  stopCamera();
+  await stopCamera();
 
   const tokenIn  = dailyToken('in');
   const tokenOut = dailyToken('out');
