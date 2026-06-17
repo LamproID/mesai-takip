@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>MesaiTakip - QR Okut</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4ff;min-height:100vh}
+
+  nav{background:linear-gradient(135deg,#1a1a2e,#16213e);height:56px;display:flex;align-items:center;
+      justify-content:center;box-shadow:0 2px 12px #0004;position:sticky;top:0;z-index:100}
+  .nav-brand{color:#e2e8ff;font-weight:800;font-size:16px;display:flex;align-items:center;gap:8px}
+  .conn-dot{width:9px;height:9px;border-radius:50%;background:#ef4444;display:inline-block;margin-right:4px;transition:background .3s}
+  .conn-dot.ok{background:#22c55e}
+
+  .page{max-width:480px;margin:0 auto;padding:18px 14px}
+
+  .card{background:#fff;border-radius:16px;padding:20px;box-shadow:0 2px 8px #0001;margin-bottom:14px}
+
+  select{width:100%;padding:13px 14px;border-radius:10px;border:2px solid #e2e8f0;font-size:16px;outline:none;cursor:pointer;background:#fff}
+  select:focus{border-color:#4f46e5}
+
+  input[type=text]{padding:11px 14px;border-radius:10px;border:2px solid #e2e8f0;font-size:15px;width:100%;outline:none}
+
+  .btn{border:none;border-radius:10px;padding:13px 20px;font-weight:700;cursor:pointer;font-size:15px;width:100%}
+  .btn-primary{background:#4f46e5;color:#fff}
+  .btn-red{background:#ef4444;color:#fff}
+
+  #camera-container{position:relative;border-radius:16px;overflow:hidden;background:#000}
+  #camera-video{width:100%;display:block;border-radius:16px}
+  #camera-canvas{display:none}
+  .scan-line{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,#4f46e5,transparent);
+             animation:scanline 2s linear infinite}
+  @keyframes scanline{0%{top:0}100%{top:100%}}
+  .scan-corner{position:absolute;width:28px;height:28px;border-color:#4f46e5;border-style:solid;border-width:0}
+  .sc-tl{top:12px;left:12px;border-top-width:3px;border-left-width:3px;border-radius:4px 0 0 0}
+  .sc-tr{top:12px;right:12px;border-top-width:3px;border-right-width:3px;border-radius:0 4px 0 0}
+  .sc-bl{bottom:12px;left:12px;border-bottom-width:3px;border-left-width:3px;border-radius:0 0 0 4px}
+  .sc-br{bottom:12px;right:12px;border-bottom-width:3px;border-right-width:3px;border-radius:0 0 4px 0}
+  #cam-emp-label{position:absolute;bottom:12px;left:0;right:0;text-align:center}
+  #cam-emp-label span{background:#1a1a2ecc;color:#e2e8ff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600}
+
+  .modal-bg{position:fixed;inset:0;background:#0008;z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
+  .modal{background:#fff;border-radius:20px;padding:28px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 40px #0004}
+  .hidden{display:none}
+
+  .text-center{text-align:center}
+  .text-muted{color:#64748b;font-size:14px}
+  .mt8{margin-top:8px} .mt16{margin-top:16px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand"><span class="conn-dot" id="conn-dot"></span>📷 MesaiTakip - QR Okut</div>
+</nav>
+
+<div class="page">
+
+  <div class="card" id="emp-select-card">
+    <div style="font-weight:700;color:#1a1a2e;margin-bottom:10px;font-size:16px">👤 Adınızı seçin:</div>
+    <select id="emp-select">
+      <option value="">-- Çalışan Seçin --</option>
+    </select>
+    <div class="mt8 text-muted" style="font-size:13px">Seçtikten sonra kamera açılacak.</div>
+  </div>
+
+  <div class="card" id="camera-card" style="display:none">
+    <div id="camera-container">
+      <video id="camera-video" autoplay playsinline></video>
+      <canvas id="camera-canvas"></canvas>
+      <div class="scan-corner sc-tl"></div>
+      <div class="scan-corner sc-tr"></div>
+      <div class="scan-corner sc-bl"></div>
+      <div class="scan-corner sc-br"></div>
+      <div class="scan-line"></div>
+      <div id="cam-emp-label"><span></span></div>
+    </div>
+    <div class="text-center mt8 text-muted" style="font-size:13px">📱 PC ekranındaki QR kodu çerçeveye getirin</div>
+    <button class="btn btn-red mt16" onclick="stopCamera()">⏹️ İptal</button>
+  </div>
+
+  <div class="card" id="manual-card" style="display:none">
+    <div style="font-weight:700;color:#1a1a2e;margin-bottom:8px;font-size:15px">⌨️ Manuel Giriş</div>
+    <div class="text-muted mt8" style="font-size:13px;margin-bottom:12px">Kamera çalışmıyorsa, ekrandaki kodu yazın:</div>
+    <input type="text" id="manual-token" placeholder="Örn: IN-2026-06-16-XXXXXX" style="margin-bottom:10px"/>
+    <button class="btn btn-primary" onclick="processManualToken()">✅ Gönder</button>
+  </div>
+
+</div>
+
+<div id="result-modal" class="modal-bg hidden" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div id="modal-icon" style="font-size:52px;margin-bottom:12px"></div>
+    <div id="modal-title" style="font-size:21px;font-weight:800;margin-bottom:6px"></div>
+    <div id="modal-sub" style="color:#64748b;font-size:15px;margin-bottom:20px;white-space:pre-line"></div>
+    <button class="btn btn-primary" onclick="closeModal()">Tamam</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+// FIREBASE
+// ══════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyDCWxXbODaYfaPZMSbTgGf7SMYwAmwAHAQ",
+  authDomain: "mesai-takip-c6727.firebaseapp.com",
+  databaseURL: "https://mesai-takip-c6727-default-rtdb.firebaseio.com",
+  projectId: "mesai-takip-c6727",
+  storageBucket: "mesai-takip-c6727.firebasestorage.app",
+  messagingSenderId: "86080704138",
+  appId: "1:86080704138:web:5f93245f17e4cc1cd4a773"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+db.ref('.info/connected').on('value', (snap) => {
+  document.getElementById('conn-dot').className = 'conn-dot' + (snap.val() ? ' ok' : '');
+});
+
+let EMPLOYEES = [];
+let RECORDS_CACHE = [];
+
+db.ref('employees').on('value', (snap) => {
+  const val = snap.val() || {};
+  EMPLOYEES = Object.keys(val).map(k => ({ id: k, ...val[k] }));
+  buildEmpSelect();
+});
+
+db.ref('records').on('value', (snap) => {
+  const val = snap.val() || {};
+  RECORDS_CACHE = Object.keys(val).map(k => ({ id: k, ...val[k] }));
+});
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+const SECRET = 'MESAI2026';
+
+function todayKey(){ return new Date().toISOString().slice(0,10); }
+
+function dailyToken(type){
+  const raw = `${type}-${todayKey()}-${SECRET}`;
+  let h=0;
+  for(let i=0;i<raw.length;i++) h=(Math.imul(31,h)+raw.charCodeAt(i))|0;
+  return `${type.toUpperCase()}-${todayKey()}-${(h>>>0).toString(36).toUpperCase()}`;
+}
+
+function nowStr(){
+  return new Date().toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function buildEmpSelect(){
+  const sel = document.getElementById('emp-select');
+  const prevVal = sel.value;
+  sel.innerHTML='<option value="">-- Çalışan Seçin --</option>';
+  EMPLOYEES.forEach(e=>{
+    const o=document.createElement('option');
+    o.value=e.id; o.textContent=`${e.name} ${e.surname}`;
+    sel.appendChild(o);
+  });
+  if(prevVal) sel.value = prevVal;
+}
+
+document.getElementById('emp-select').addEventListener('change', function(){
+  if(this.value) startCamera(this.value);
+});
+
+// ══════════════════════════════════════════════════
+// KAMERA
+// ══════════════════════════════════════════════════
+let cameraStream = null;
+let scanLoop     = null;
+let scanDone     = false;
+
+async function startCamera(empId){
+  stopCamera(false);
+  scanDone = false;
+  document.getElementById('emp-select-card').style.display='none';
+
+  const camCard = document.getElementById('camera-card');
+  camCard.style.display='block';
+
+  const emp = EMPLOYEES.find(e=>e.id===empId);
+  document.querySelector('#cam-emp-label span').textContent = emp ? `👤 ${emp.name} ${emp.surname}` : '';
+
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
+    });
+    video.srcObject = cameraStream;
+    await video.play();
+
+    scanLoop = setInterval(()=>{
+      if(scanDone || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height, {inversionAttempts:'dontInvert'});
+      if(code && code.data) processQRData(code.data, empId);
+    }, 300);
+
+  } catch(err) {
+    camCard.style.display='none';
+    document.getElementById('manual-card').style.display='block';
+    document.getElementById('emp-select-card').style.display='block';
+  }
+}
+
+function stopCamera(resetSelect=true){
+  if(scanLoop){ clearInterval(scanLoop); scanLoop=null; }
+  if(cameraStream){ cameraStream.getTracks().forEach(t=>t.stop()); cameraStream=null; }
+  const v=document.getElementById('camera-video');
+  if(v) v.srcObject=null;
+  document.getElementById('camera-card').style.display='none';
+  document.getElementById('emp-select-card').style.display='block';
+  if(resetSelect) document.getElementById('emp-select').value='';
+  scanDone=false;
+}
+
+async function processQRData(data, empId){
+  scanDone = true;
+  stopCamera();
+
+  const tokenIn  = dailyToken('in');
+  const tokenOut = dailyToken('out');
+
+  if(data !== tokenIn && data !== tokenOut){
+    showModal('❌','Geçersiz QR Kod','Bu kod bugün için geçerli değil.\nLütfen PC ekranındaki güncel QR kodu okutun.', false);
+    return;
+  }
+
+  const type = data === tokenIn ? 'in' : 'out';
+  await registerAttendance(empId, type);
+}
+
+function processManualToken(){
+  const empId = document.getElementById('emp-select').value;
+  const token = document.getElementById('manual-token').value.trim().toUpperCase();
+  if(!empId){ alert('Önce çalışan seçin!'); return; }
+  if(!token){ alert('Kod girin!'); return; }
+  processQRData(token, empId);
+}
+
+async function registerAttendance(empId, type){
+  const emp = EMPLOYEES.find(e=>e.id===empId);
+  if(!emp){ showModal('❌','Hata','Çalışan bulunamadı.',false); return; }
+
+  const today = todayKey();
+  const dup = RECORDS_CACHE.find(r=> r.date===today && r.empId===empId && r.type===type);
+  if(dup){
+    showModal('⚠️',`${emp.name} ${emp.surname}`,
+      `Bugün zaten ${type==='in'?'giriş':'çıkış'} kaydınız var! (${dup.time})`, false);
+    return;
+  }
+
+  if(type==='out'){
+    const hasIn = RECORDS_CACHE.find(r=> r.date===today && r.empId===empId && r.type==='in');
+    if(!hasIn){
+      showModal('⚠️','Giriş Gerekli','Çıkış yapmadan önce giriş kaydınız olmalı!',false);
+      return;
+    }
+  }
+
+  const rec = {
+    empId, name:emp.name, surname:emp.surname,
+    type, time:nowStr(), date:today,
+    timestamp: Date.now()
+  };
+
+  try {
+    await db.ref('records').push(rec);
+    const typeLabel = type==='in' ? '🟢 İşe Giriş' : '🔴 İşten Çıkış';
+    showModal(type==='in'?'✅':'👋', `${emp.name} ${emp.surname}`, `${typeLabel} kaydedildi\n🕐 ${rec.time}`, true);
+  } catch(err){
+    showModal('❌','Bağlantı Hatası','Kayıt yapılamadı, internet bağlantınızı kontrol edin.', false);
+  }
+}
+
+// ══════════════════════════════════════════════════
+// MODAL
+// ══════════════════════════════════════════════════
+function showModal(icon, title, sub, ok){
+  document.getElementById('modal-icon').textContent=icon;
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-title').style.color=ok?'#166534':'#991b1b';
+  document.getElementById('modal-sub').textContent=sub;
+  document.getElementById('result-modal').classList.remove('hidden');
+}
+function closeModal(){
+  document.getElementById('result-modal').classList.add('hidden');
+}
+</script>
+</body>
+</html>
