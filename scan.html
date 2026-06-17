@@ -4,8 +4,6 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>MesaiTakip - QR Okut</title>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -33,20 +31,6 @@
   .btn-primary{background:#4f46e5;color:#fff}
   .btn-red{background:#ef4444;color:#fff}
 
-  #camera-container{position:relative;border-radius:16px;overflow:hidden;background:#000}
-  #camera-video{width:100%;display:block;border-radius:16px}
-  #camera-canvas{display:none}
-  .scan-line{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,#4f46e5,transparent);
-             animation:scanline 2s linear infinite}
-  @keyframes scanline{0%{top:0}100%{top:100%}}
-  .scan-corner{position:absolute;width:28px;height:28px;border-color:#4f46e5;border-style:solid;border-width:0}
-  .sc-tl{top:12px;left:12px;border-top-width:3px;border-left-width:3px;border-radius:4px 0 0 0}
-  .sc-tr{top:12px;right:12px;border-top-width:3px;border-right-width:3px;border-radius:0 4px 0 0}
-  .sc-bl{bottom:12px;left:12px;border-bottom-width:3px;border-left-width:3px;border-radius:0 0 0 4px}
-  .sc-br{bottom:12px;right:12px;border-bottom-width:3px;border-right-width:3px;border-radius:0 0 4px 0}
-  #cam-emp-label{position:absolute;bottom:12px;left:0;right:0;text-align:center}
-  #cam-emp-label span{background:#1a1a2ecc;color:#e2e8ff;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600}
-
   .modal-bg{position:fixed;inset:0;background:#0008;z-index:200;display:flex;align-items:center;justify-content:center;padding:16px}
   .modal{background:#fff;border-radius:20px;padding:28px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 40px #0004}
   .hidden{display:none}
@@ -65,31 +49,18 @@
 <div class="page">
 
   <div class="card" id="emp-select-card">
+    <div id="token-status" style="margin-bottom:14px"></div>
     <div style="font-weight:700;color:#1a1a2e;margin-bottom:10px;font-size:16px">👤 Adınızı seçin:</div>
     <select id="emp-select">
       <option value="">-- Çalışan Seçin --</option>
     </select>
-    <div class="mt8 text-muted" style="font-size:13px">Seçtikten sonra kamera açılacak.</div>
-  </div>
-
-  <div class="card" id="camera-card" style="display:none">
-    <div id="camera-container">
-      <div id="qr-reader" style="width:100%"></div>
-      <div class="scan-corner sc-tl"></div>
-      <div class="scan-corner sc-tr"></div>
-      <div class="scan-corner sc-bl"></div>
-      <div class="scan-corner sc-br"></div>
-      <div id="cam-emp-label"><span></span></div>
-    </div>
-    <div class="text-center mt8 text-muted" style="font-size:13px">📱 PC ekranındaki QR kodu çerçeveye getirin</div>
-    <div id="debug-readout" class="text-center" style="font-size:12px;color:#4f46e5;font-family:monospace;margin-top:6px;min-height:18px"></div>
-    <button class="btn btn-red mt16" onclick="stopCamera(true)">⏹️ İptal</button>
+    <button class="btn btn-primary mt16" id="confirm-btn" onclick="confirmFromUrl()" style="display:none">✅ Onayla</button>
   </div>
 
   <div class="card" id="manual-card" style="display:none">
     <div style="font-weight:700;color:#1a1a2e;margin-bottom:8px;font-size:15px">⌨️ Manuel Giriş</div>
-    <div class="text-muted mt8" style="font-size:13px;margin-bottom:12px">Kamera çalışmıyorsa, ekrandaki kodu yazın:</div>
-    <input type="text" id="manual-token" placeholder="Örn: IN-2026-06-16-XXXXXX" style="margin-bottom:10px"/>
+    <div class="text-muted mt8" style="font-size:13px;margin-bottom:12px">QR kod linki yoksa, kodu buraya yapıştırın:</div>
+    <input type="text" id="manual-token" placeholder="Örn: IN-2026-06-17-XXXXXX" style="margin-bottom:10px"/>
     <button class="btn btn-primary" onclick="processManualToken()">✅ Gönder</button>
   </div>
 
@@ -172,88 +143,62 @@ function buildEmpSelect(){
   if(prevVal) sel.value = prevVal;
 }
 
-document.getElementById('emp-select').addEventListener('change', function(){
-  if(this.value) startCamera(this.value);
-});
-
 // ══════════════════════════════════════════════════
-// KAMERA (html5-qrcode kütüphanesi ile)
+// URL'DEN TOKEN OKUMA
 // ══════════════════════════════════════════════════
-let html5QrCode = null;
-let scanDone     = false;
-let currentEmpId = null;
+let urlToken = null;
+let urlType  = null;
 
-async function startCamera(empId){
-  await stopCamera(false);
-  scanDone = false;
-  currentEmpId = empId;
-  document.getElementById('emp-select-card').style.display='none';
+function readUrlParams(){
+  const params = new URLSearchParams(window.location.search);
+  urlToken = params.get('token');
+  urlType  = params.get('type');
 
-  const camCard = document.getElementById('camera-card');
-  camCard.style.display='block';
+  const statusEl = document.getElementById('token-status');
+  const confirmBtn = document.getElementById('confirm-btn');
 
-  const emp = EMPLOYEES.find(e=>e.id===empId);
-  document.querySelector('#cam-emp-label span').textContent = emp ? `👤 ${emp.name} ${emp.surname}` : '';
-
-  const dbg = document.getElementById('debug-readout');
-
-  if (typeof Html5Qrcode === 'undefined') {
-    camCard.style.display='none';
+  if(!urlToken || !urlType){
+    statusEl.innerHTML = `<div style="background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:12px;font-size:13px;color:#92400e">
+      ⚠️ QR kod linki bulunamadı. Lütfen PC ekranındaki QR kodu telefon kameranızla (Safari/Kamera uygulaması) okutarak bu sayfayı açın.
+    </div>`;
+    confirmBtn.style.display='none';
     document.getElementById('manual-card').style.display='block';
-    document.getElementById('emp-select-card').style.display='block';
-    alert('QR okuma kütüphanesi yüklenemedi. İnternet bağlantınızı kontrol edip sayfayı yenileyin, veya manuel girişi kullanın.');
-    return;
+    return false;
   }
 
-  try {
-    html5QrCode = new Html5Qrcode("qr-reader");
-    if(dbg) dbg.textContent = '📷 Kamera başlatılıyor...';
+  const tokenIn  = dailyToken('in');
+  const tokenOut = dailyToken('out');
 
-    await html5QrCode.start(
-      { facingMode: "environment" },
-      {
-        fps: 10,
-        qrbox: (viewfinderWidth, viewfinderHeight) => {
-          const size = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
-          return { width: size, height: size };
-        },
-        aspectRatio: 1.0
-      },
-      (decodedText) => {
-        if(!scanDone) processQRData(decodedText, currentEmpId);
-      },
-      (errorMessage) => {
-        if(dbg && !scanDone) dbg.textContent = '🔍 Taranıyor...';
-      }
-    );
-    if(dbg) dbg.textContent = '🔍 Taranıyor...';
-  } catch(err) {
-    camCard.style.display='none';
-    document.getElementById('manual-card').style.display='block';
-    document.getElementById('emp-select-card').style.display='block';
-    alert('Kamera açılamadı: ' + err + '\nManuel girişi kullanabilirsiniz.');
+  if(urlToken !== tokenIn && urlToken !== tokenOut){
+    statusEl.innerHTML = `<div style="background:#fef2f2;border:2px solid #ef4444;border-radius:10px;padding:12px;font-size:13px;color:#991b1b">
+      ❌ Bu QR kod bugün için geçerli değil. Lütfen PC ekranındaki güncel kodu tekrar okutun.
+    </div>`;
+    confirmBtn.style.display='none';
+    return false;
   }
+
+  const typeLabel = urlType === 'in' ? '🟢 İŞE GİRİŞ' : '🔴 İŞTEN ÇIKIŞ';
+  const bgColor = urlType === 'in' ? '#f0fdf4' : '#fff7ed';
+  const borderColor = urlType === 'in' ? '#22c55e' : '#f97316';
+  statusEl.innerHTML = `<div style="background:${bgColor};border:2px solid ${borderColor};border-radius:10px;padding:14px;text-align:center">
+    <div style="font-size:17px;font-weight:800;color:#1a1a2e">${typeLabel}</div>
+    <div style="font-size:13px;color:#64748b;margin-top:4px">İşlemi onaylamak için adınızı seçin</div>
+  </div>`;
+  confirmBtn.style.display='block';
+  return true;
 }
 
-async function stopCamera(resetSelect=true){
-  if(html5QrCode){
-    try{
-      const state = html5QrCode.getState ? html5QrCode.getState() : null;
-      await html5QrCode.stop();
-      await html5QrCode.clear();
-    }catch(e){ /* zaten durmuş olabilir */ }
-    html5QrCode = null;
-  }
-  document.getElementById('camera-card').style.display='none';
-  document.getElementById('emp-select-card').style.display='block';
-  if(resetSelect) document.getElementById('emp-select').value='';
-  scanDone=false;
+document.getElementById('emp-select').addEventListener('change', function(){
+  document.getElementById('confirm-btn').style.display = (this.value && urlToken) ? 'block' : 'none';
+});
+
+function confirmFromUrl(){
+  const empId = document.getElementById('emp-select').value;
+  if(!empId){ alert('Önce adınızı seçin!'); return; }
+  processQRData(urlToken, empId);
 }
 
 async function processQRData(data, empId){
-  scanDone = true;
-  await stopCamera();
-
   const tokenIn  = dailyToken('in');
   const tokenOut = dailyToken('out');
 
@@ -304,6 +249,10 @@ async function registerAttendance(empId, type){
     await db.ref('records').push(rec);
     const typeLabel = type==='in' ? '🟢 İşe Giriş' : '🔴 İşten Çıkış';
     showModal(type==='in'?'✅':'👋', `${emp.name} ${emp.surname}`, `${typeLabel} kaydedildi\n🕐 ${rec.time}`, true);
+    // URL'i temizle, kazara yenilemede tekrar kayıt oluşmasın
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.getElementById('confirm-btn').style.display='none';
+    document.getElementById('emp-select').value='';
   } catch(err){
     showModal('❌','Bağlantı Hatası','Kayıt yapılamadı, internet bağlantınızı kontrol edin.', false);
   }
@@ -322,6 +271,11 @@ function showModal(icon, title, sub, ok){
 function closeModal(){
   document.getElementById('result-modal').classList.add('hidden');
 }
+
+// ══════════════════════════════════════════════════
+// BAŞLAT
+// ══════════════════════════════════════════════════
+readUrlParams();
 </script>
 </body>
 </html>

@@ -110,8 +110,9 @@
   <div class="card-dark text-center mt8">
     <div style="color:#94a3b8;font-size:12px;margin-bottom:6px">💡 Bu ekranı çalışanlara açık tutun</div>
     <div style="color:#e2e8ff;font-size:13px;line-height:1.7">
-      Çalışanlar telefonlarındaki <strong>scan.html</strong> sayfasını açıp<br>
-      bu ekrandaki QR kodu kamerayla okutacaklar.
+      Çalışanlar telefonlarının <strong>normal kamerasıyla</strong><br>
+      bu ekrandaki QR kodu okutacaklar.<br>
+      Açılan sayfadan adlarını seçip onaylayacaklar.
     </div>
   </div>
 </div>
@@ -247,19 +248,25 @@ function showPage(name){
 // ══════════════════════════════════════════════════
 let currentDay = todayKey();
 
+// Scan sayfasının tam adresi — GitHub Pages linkinizle eşleşmeli
+const SCAN_BASE_URL = 'https://lamproid.github.io/mesai-takip/scan.html';
+
 function buildQR(){
   const tokenIn  = dailyToken('in');
   const tokenOut = dailyToken('out');
+
+  const urlIn  = `${SCAN_BASE_URL}?token=${encodeURIComponent(tokenIn)}&type=in`;
+  const urlOut = `${SCAN_BASE_URL}?token=${encodeURIComponent(tokenOut)}&type=out`;
 
   document.getElementById('qr-date-label').textContent = `📅 ${todayStr()}`;
 
   const inBox = document.getElementById('qr-in-box');
   inBox.innerHTML='';
-  new QRCode(inBox,{ text: tokenIn, width:280, height:280, colorDark:'#000000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
+  new QRCode(inBox,{ text: urlIn, width:280, height:280, colorDark:'#000000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
 
   const outBox = document.getElementById('qr-out-box');
   outBox.innerHTML='';
-  new QRCode(outBox,{ text: tokenOut, width:280, height:280, colorDark:'#000000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
+  new QRCode(outBox,{ text: urlOut, width:280, height:280, colorDark:'#000000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
 }
 
 function startClock(){
