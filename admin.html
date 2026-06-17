@@ -251,11 +251,11 @@ function buildQR(){
 
   const inBox = document.getElementById('qr-in-box');
   inBox.innerHTML='';
-  new QRCode(inBox,{ text: tokenIn, width:200, height:200, colorDark:'#166534', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.H });
+  new QRCode(inBox,{ text: tokenIn, width:280, height:280, colorDark:'#000000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
 
   const outBox = document.getElementById('qr-out-box');
   outBox.innerHTML='';
-  new QRCode(outBox,{ text: tokenOut, width:200, height:200, colorDark:'#991b1b', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.H });
+  new QRCode(outBox,{ text: tokenOut, width:280, height:280, colorDark:'#000000', colorLight:'#fff', correctLevel: QRCode.CorrectLevel.M });
 }
 
 function startClock(){

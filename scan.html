@@ -84,6 +84,7 @@
       <div id="cam-emp-label"><span></span></div>
     </div>
     <div class="text-center mt8 text-muted" style="font-size:13px">📱 PC ekranındaki QR kodu çerçeveye getirin</div>
+    <div id="debug-readout" class="text-center" style="font-size:12px;color:#4f46e5;font-family:monospace;margin-top:6px;min-height:18px"></div>
     <button class="btn btn-red mt16" onclick="stopCamera()">⏹️ İptal</button>
   </div>
 
@@ -196,7 +197,7 @@ async function startCamera(empId){
 
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
+      video:{ facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080} }
     });
     video.srcObject = cameraStream;
     await video.play();
@@ -208,9 +209,15 @@ async function startCamera(empId){
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video,0,0,canvas.width,canvas.height);
       const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
-      const code = jsQR(imgData.data, imgData.width, imgData.height, {inversionAttempts:'dontInvert'});
-      if(code && code.data) processQRData(code.data, empId);
-    }, 300);
+      const code = jsQR(imgData.data, imgData.width, imgData.height, {inversionAttempts:'attemptBoth'});
+      const dbg = document.getElementById('debug-readout');
+      if(code && code.data){
+        if(dbg) dbg.textContent = '✅ Okundu: ' + code.data;
+        processQRData(code.data, empId);
+      } else if(dbg){
+        dbg.textContent = '🔍 Taranıyor... (' + canvas.width + 'x' + canvas.height + ')';
+      }
+    }, 250);
 
   } catch(err) {
     camCard.style.display='none';
