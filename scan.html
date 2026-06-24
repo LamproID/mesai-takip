@@ -223,22 +223,29 @@ async function registerAttendance(empId, type){
   const emp = EMPLOYEES.find(e=>e.id===empId);
   if(!emp){ showModal('❌','Hata','Çalışan bulunamadı.',false); return; }
 
-  const today = todayKey();
-  const dup = RECORDS_CACHE.find(r=> r.date===today && r.empId===empId && r.type===type);
-  if(dup){
-    showModal('⚠️',`${emp.name} ${emp.surname}`,
-      `Bugün zaten ${type==='in'?'giriş':'çıkış'} kaydınız var! (${dup.time})`, false);
-    return;
-  }
+  // Bu çalışanın tüm kayıtlarını zaman sırasına göre al (gece nöbeti gibi gün-aşan vardiyalar için)
+  const empRecords = RECORDS_CACHE
+    .filter(r => r.empId === empId)
+    .sort((a,b) => (a.timestamp||0) - (b.timestamp||0));
 
-  if(type==='out'){
-    const hasIn = RECORDS_CACHE.find(r=> r.date===today && r.empId===empId && r.type==='in');
-    if(!hasIn){
-      showModal('⚠️','Giriş Gerekli','Çıkış yapmadan önce giriş kaydınız olmalı!',false);
+  const lastRecord = empRecords.length ? empRecords[empRecords.length-1] : null;
+
+  if(type === 'in'){
+    // Son kayıt zaten "giriş" ise ve kapatılmamışsa, tekrar giriş yapılamaz
+    if(lastRecord && lastRecord.type === 'in'){
+      showModal('⚠️',`${emp.name} ${emp.surname}`,
+        `Zaten açık bir giriş kaydınız var! (${lastRecord.date} ${lastRecord.time})\nÖnce çıkış yapmalısınız.`, false);
+      return;
+    }
+  } else { // type === 'out'
+    // Çıkış yapabilmek için son kaydın "giriş" olması ve kapatılmamış olması gerekir
+    if(!lastRecord || lastRecord.type !== 'in'){
+      showModal('⚠️','Giriş Gerekli','Çıkış yapmadan önce açık bir giriş kaydınız olmalı!',false);
       return;
     }
   }
 
+  const today = todayKey();
   const rec = {
     empId, name:emp.name, surname:emp.surname,
     type, time:nowStr(), date:today,
